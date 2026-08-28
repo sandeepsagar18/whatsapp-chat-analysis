@@ -711,59 +711,81 @@ if uploaded_file is not None:
                     )
 
                 # ==========================================
-                # 📇 CONTACT DIRECTORY & ONE-CLICK ACTIONS
+                # 📇 ON-SCREEN INTERACTIVE CONTACT CARDS
                 # ==========================================
                 contacts_df, vcard_data = helper.extract_contacts_directory(raw_df_for_pii)
                 if not contacts_df.empty:
                     st.markdown("<br>", unsafe_allow_html=True)
-                    st.subheader("📇 Contact Finder & Direct Reachout")
-                    st.caption("One-click actions to call, WhatsApp, or email any contact shared in this conversation.")
+                    st.subheader("📇 Found Contact Details & One-Click Connect")
+                    st.caption("All extracted phone numbers and email addresses displayed as interactive contact cards.")
 
-                    col_card_actions, col_card_dl = st.columns([2, 1])
+                    # Search contacts filter
+                    contact_search = st.text_input("🔍 Filter contacts by name or number:", placeholder="e.g. Rahul, @gmail, 9876...", key="contact_search")
+                    filtered_contacts = contacts_df.copy()
+                    if contact_search:
+                        filtered_contacts = filtered_contacts[
+                            filtered_contacts['Sender'].astype(str).str.contains(contact_search, case=False, na=False) |
+                            filtered_contacts['Contact Detail'].astype(str).str.contains(contact_search, case=False, na=False) |
+                            filtered_contacts['Context'].astype(str).str.contains(contact_search, case=False, na=False)
+                        ]
 
-                    # Prepare display columns
-                    contact_view = contacts_df.copy()
-                    if 'WhatsApp Link' not in contact_view.columns:
-                        contact_view['WhatsApp Link'] = None
-                    if 'Email Action' not in contact_view.columns:
-                        contact_view['Email Action'] = None
+                    st.caption(f"Displaying **{len(filtered_contacts)}** contact(s)")
 
-                    st.dataframe(
-                        contact_view[['Type', 'Sender', 'Contact Detail', 'WhatsApp Link', 'Email Action', 'Context']],
-                        column_config={
-                            "WhatsApp Link": st.column_config.LinkColumn(
-                                "💬 WhatsApp",
-                                help="Click to open direct WhatsApp conversation",
-                                display_text="Chat on WhatsApp ↗"
-                            ),
-                            "Email Action": st.column_config.LinkColumn(
-                                "✉️ Email",
-                                help="Click to compose an email",
-                                display_text="Send Email ↗"
+                    # Render cards in a 2-column responsive layout
+                    for i in range(0, len(filtered_contacts), 2):
+                        c_col1, c_col2 = st.columns(2)
+                        batch = filtered_contacts.iloc[i:i+2]
+                        
+                        for idx_in_batch, (_, contact) in enumerate(batch.iterrows()):
+                            current_col = c_col1 if idx_in_batch == 0 else c_col2
+                            with current_col:
+                                is_phone = contact['Action Type'] == 'phone'
+                                badge_bg = "rgba(37, 211, 102, 0.15)" if is_phone else "rgba(59, 130, 246, 0.15)"
+                                badge_color = "#25D366" if is_phone else "#60A5FA"
+                                
+                                st.markdown(f"""
+                                <div class="metric-card" style="text-align: left; padding: 18px 20px; margin-bottom: 12px; border-top: 3px solid {badge_color};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-weight: 700; font-size: 1.05rem; color: #F1F5F9;">👤 {contact['Sender']}</span>
+                                        <span style="background: {badge_bg}; color: {badge_color}; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">{contact['Type']}</span>
+                                    </div>
+                                    <div style="font-size: 1.25rem; font-weight: 800; color: #fff; margin-bottom: 6px; letter-spacing: 0.02em;">
+                                        {contact['Contact Detail']}
+                                    </div>
+                                    <div style="font-size: 0.8rem; color: #94A3B8; margin-bottom: 12px; background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 8px;">
+                                        💬 <i>"{contact['Context']}"</i>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                                # Action buttons underneath the card
+                                if is_phone:
+                                    btn_col1, btn_col2 = st.columns(2)
+                                    with btn_col1:
+                                        st.link_button("💬 Chat on WhatsApp", url=contact['WhatsApp Link'], use_container_width=True)
+                                    with btn_col2:
+                                        st.link_button("📞 Call Now", url=contact['Call Action'], use_container_width=True)
+                                else:
+                                    st.link_button("✉️ Compose Email", url=contact['Email Action'], use_container_width=True)
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    with st.expander("📥 Optional: Export Contacts to Phone Book (.vcf / .csv)"):
+                        col_vcf, col_ccsv = st.columns(2)
+                        with col_vcf:
+                            st.download_button(
+                                label="📇 Download vCard (.vcf)",
+                                data=vcard_data.encode('utf-8'),
+                                file_name="whatsapp_contacts.vcf",
+                                mime="text/vcard"
                             )
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
-
-                    # Export contacts as vCard (.vcf) and CSV
-                    col_vcf, col_ccsv = st.columns(2)
-                    with col_vcf:
-                        st.download_button(
-                            label="📇 Export All Contacts to Phone Book (.vcf)",
-                            data=vcard_data.encode('utf-8'),
-                            file_name="whatsapp_extracted_contacts.vcf",
-                            mime="text/vcard",
-                            help="Download vCard to import all found numbers and emails directly into Android / iPhone / Google Contacts."
-                        )
-                    with col_ccsv:
-                        contacts_csv = contact_view.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📋 Download Contacts as CSV",
-                            data=contacts_csv,
-                            file_name="whatsapp_contacts_list.csv",
-                            mime="text/csv"
-                        )
+                        with col_ccsv:
+                            contacts_csv = filtered_contacts.to_csv(index=False).encode('utf-8')
+                            st.download_button(
+                                label="📋 Download Contacts CSV",
+                                data=contacts_csv,
+                                file_name="whatsapp_contacts.csv",
+                                mime="text/csv"
+                            )
 
                 st.divider()
 
