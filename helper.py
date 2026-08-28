@@ -634,4 +634,44 @@ def extract_contacts_directory(df):
     return contacts_df, vcard_data
 
 
+def get_group_members_roster(df):
+    """
+    Extracts all participants involved in the chat group along with their
+    message count, first/last active timestamps, and identifies if the user is a phone number.
+    """
+    temp = df[df['user'] != 'group_notification'].copy()
+    if temp.empty:
+        return pd.DataFrame()
+
+    roster = []
+    for user_name, group in temp.groupby('user'):
+        total_msgs = len(group)
+        total_words = sum(len(str(m).split()) for m in group['message'])
+        first_seen = group['date'].min()
+        last_seen = group['date'].max()
+
+        # Check if the participant name is an unsaved phone number (e.g., +91 98765..., 98765...)
+        clean_digits = re.sub(r'\D', '', str(user_name))
+        is_phone_handle = len(clean_digits) >= 10 and len(clean_digits) <= 13
+        if is_phone_handle and len(clean_digits) == 10:
+            clean_digits = "91" + clean_digits
+
+        wa_link = f"https://wa.me/{clean_digits}" if is_phone_handle else None
+
+        roster.append({
+            'Member': user_name,
+            'Is Phone Number': '📱 Unsaved Phone' if is_phone_handle else '👤 Saved Name',
+            'Messages Sent': total_msgs,
+            'Words Typed': total_words,
+            'First Active': first_seen.strftime('%d %b %Y, %I:%M %p'),
+            'Last Active': last_seen.strftime('%d %b %Y, %I:%M %p'),
+            'WhatsApp Direct Link': wa_link
+        })
+
+    roster_df = pd.DataFrame(roster)
+    roster_df.sort_values(by='Messages Sent', ascending=False, inplace=True)
+    return roster_df
+
+
+
 

@@ -345,6 +345,36 @@ if uploaded_file is not None:
 
                 st.divider()
 
+                # Complete Group Member Directory (Persons Involved)
+                st.subheader("👥 Complete Group Members Directory")
+                st.caption("A full roster of all participants involved in this group chat with message counts, activity timeline, and direct reachout.")
+
+                roster_df = helper.get_group_members_roster(raw_df_for_pii)
+                if not roster_df.empty:
+                    member_search = st.text_input("🔍 Search group members by name or phone:", placeholder="e.g. Sandeep, +91...", key="member_search")
+                    filtered_roster = roster_df.copy()
+                    if member_search:
+                        filtered_roster = filtered_roster[filtered_roster['Member'].astype(str).str.contains(member_search, case=False, na=False)]
+
+                    st.caption(f"Showing **{len(filtered_roster)}** of **{len(roster_df)}** members in this chat group")
+
+                    st.dataframe(
+                        filtered_roster,
+                        column_config={
+                            "WhatsApp Direct Link": st.column_config.LinkColumn(
+                                "💬 Direct WhatsApp",
+                                help="Click to open direct chat on WhatsApp (available if participant handle is a phone number)",
+                                display_text="Chat on WhatsApp ↗"
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.info("No participants found.")
+
+                st.divider()
+
                 # Response Time & Ghosting Analysis
                 st.subheader("⚡ Response Speed & Reply Delays")
                 st.caption("Calculates how quickly participants respond when replying to someone else")
