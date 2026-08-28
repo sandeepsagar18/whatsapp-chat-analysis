@@ -3,36 +3,58 @@ import pandas as pd
 
 
 def preprocess(data):
-    # This pattern matches: 5/30/25, 2:59 PM -
-    # It specifically looks for Month/Day/Year format
-    pattern = r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s[aApP][mM]\s-\s'
+    # Normalize unicode non-breaking spaces and narrow spaces
+    data = data.replace('\u202f', ' ').replace('\xa0', ' ').replace('\u200e', '')
 
-    messages = re.split(pattern, data)[1:]
-    dates = re.findall(pattern, data)
+    # Common WhatsApp datetime regex patterns
+    patterns = [
+        # Android 12-hr format: "12/31/22, 11:59 PM - " or "31/12/2022, 11:59 pm - "
+        r'(\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}(?::\d{2})?\s[aApP][mM])\s-\s',
+        # Android 24-hr format: "31/12/2022, 23:59 - "
+        r'(\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}(?::\d{2})?)\s-\s',
+        # iOS format with brackets: "[31/12/22, 11:59:59 PM] "
+        r'\[(\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}(?::\d{2})?(?:\s[aApP][mM])?)\]\s',
+    ]
 
-    df = pd.DataFrame({'user_message': messages, 'message_date': dates})
+    matched_pattern = None
+    for pat in patterns:
+        if re.search(pat, data):
+            matched_pattern = pat
+            break
 
-    # Updated format to match M/D/YY: %m/%d/%y
-    # %I for 12-hour clock, %p for AM/PM
-    df['message_date'] = pd.to_datetime(df['message_date'].str.replace(' - ', ''), format='%m/%d/%y, %I:%M %p')
+    if not matched_pattern:
+        matched_pattern = r'(\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s[aApP][mM])\s-\s'
 
-    df.rename(columns={'message_date': 'date'}, inplace=True)
+    messages = re.split(matched_pattern, data)
+
+    if len(messages) <= 1:
+        return pd.DataFrame()
+
+    dates = messages[1::2]
+    user_messages = messages[2::2]
+
+    df = pd.DataFrame({'user_message': user_messages, 'message_date': dates})
+
+    df['date'] = pd.to_datetime(df['message_date'], errors='coerce', format='mixed')
+    df.dropna(subset=['date'], inplace=True)
+
+    if df.empty:
+        return pd.DataFrame()
 
     users = []
-    messages = []
+    cleaned_messages = []
     for message in df['user_message']:
-        # Fixed SyntaxWarning by using 'r' prefix for raw string
-        entry = re.split(r'([\w\W]+?):\s', message)
-        if entry[1:]:
-            users.append(entry[1])
-            messages.append(" ".join(entry[2:]))
+        entry = re.split(r'([\w\W]+?):\s', message, maxsplit=1)
+        if len(entry) >= 3:
+            users.append(entry[1].strip())
+            cleaned_messages.append(entry[2])
         else:
             users.append('group_notification')
-            messages.append(entry[0])
+            cleaned_messages.append(entry[0])
 
     df['user'] = users
-    df['message'] = messages
-    df.drop(columns=['user_message'], inplace=True)
+    df['message'] = cleaned_messages
+    df.drop(columns=['user_message', 'message_date'], inplace=True, errors='ignore')
 
     df['only_date'] = df['date'].dt.date
     df['year'] = df['date'].dt.year
@@ -50,7 +72,7 @@ def preprocess(data):
         elif hour == 0:
             period.append("00-01")
         else:
-            period.append(str(hour) + "-" + str(hour + 1))
+            period.append(f"{hour:02d}-{(hour + 1):02d}")
     df['period'] = period
 
     return df
