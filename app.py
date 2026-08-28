@@ -363,13 +363,21 @@ if uploaded_file is not None:
                         column_config={
                             "WhatsApp Direct Link": st.column_config.LinkColumn(
                                 "💬 Direct WhatsApp",
-                                help="Click to open direct chat on WhatsApp (available if participant handle is a phone number)",
+                                help="Click to open direct chat on WhatsApp (available if participant handle or message has a phone number)",
                                 display_text="Chat on WhatsApp ↗"
                             )
                         },
                         use_container_width=True,
                         hide_index=True
                     )
+
+                    with st.expander("ℹ️ Why do some members show 'Saved in Phonebook' instead of phone numbers?"):
+                        st.markdown("""
+                        - **How WhatsApp Exports Work**: When you export a chat from WhatsApp, WhatsApp automatically replaces the phone number of anyone saved in your phone's address book with their saved name (e.g. `sandeep sagar`, `Swadesh F16`).
+                        - **When Phone Numbers Appear**:
+                          1. If the contact is **Unsaved** in your phone (like `+91 63868 35870`), WhatsApp includes the full phone number in the export.
+                          2. If a member ever **shared a phone number in their chat messages**, our scanner automatically extracts it and links it here!
+                        """)
                 else:
                     st.info("No participants found.")
 

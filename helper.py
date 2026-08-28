@@ -637,7 +637,8 @@ def extract_contacts_directory(df):
 def get_group_members_roster(df):
     """
     Extracts all participants involved in the chat group along with their
-    message count, first/last active timestamps, and identifies if the user is a phone number.
+    message count, first/last active timestamps, and identifies if the user is a phone number
+    or shared a phone number in their chat messages.
     """
     temp = df[df['user'] != 'group_notification'].copy()
     if temp.empty:
@@ -650,17 +651,36 @@ def get_group_members_roster(df):
         first_seen = group['date'].min()
         last_seen = group['date'].max()
 
-        # Check if the participant name is an unsaved phone number (e.g., +91 98765..., 98765...)
+        # 1. Check if the participant handle itself is a phone number (unsaved contact)
         clean_digits = re.sub(r'\D', '', str(user_name))
-        is_phone_handle = len(clean_digits) >= 10 and len(clean_digits) <= 13
-        if is_phone_handle and len(clean_digits) == 10:
-            clean_digits = "91" + clean_digits
+        is_phone_handle = 10 <= len(clean_digits) <= 13
+        phone_found = None
 
-        wa_link = f"https://wa.me/{clean_digits}" if is_phone_handle else None
+        if is_phone_handle:
+            phone_found = str(user_name)
+            if len(clean_digits) == 10:
+                clean_digits = "91" + clean_digits
+        else:
+            # 2. Check if this participant ever shared their phone number in any message
+            for msg in group['message']:
+                matches = detect_pii_in_text(msg)
+                for m in matches:
+                    if m['category'] == 'Phone Number':
+                        raw_phone = m['value']
+                        digits = re.sub(r'\D', '', raw_phone)
+                        if 10 <= len(digits) <= 13:
+                            phone_found = f"{raw_phone} (from chat)"
+                            clean_digits = "91" + digits if len(digits) == 10 else digits
+                            break
+                if phone_found:
+                    break
+
+        wa_link = f"https://wa.me/{clean_digits}" if phone_found else None
 
         roster.append({
             'Member': user_name,
-            'Is Phone Number': '📱 Unsaved Phone' if is_phone_handle else '👤 Saved Name',
+            'Contact Type': '📱 Unsaved Phone' if is_phone_handle else ('📞 Phone Found in Chat' if phone_found else '👤 Saved Contact Name'),
+            'Identified Phone': phone_found if phone_found else 'Saved in Phonebook (Not in Export)',
             'Messages Sent': total_msgs,
             'Words Typed': total_words,
             'First Active': first_seen.strftime('%d %b %Y, %I:%M %p'),
@@ -671,6 +691,7 @@ def get_group_members_roster(df):
     roster_df = pd.DataFrame(roster)
     roster_df.sort_values(by='Messages Sent', ascending=False, inplace=True)
     return roster_df
+
 
 
 
