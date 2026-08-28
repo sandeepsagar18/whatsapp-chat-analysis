@@ -1,9 +1,20 @@
 import os
 from collections import Counter
+from urllib.parse import urlparse
 from urlextract import URLExtract
 from wordcloud import WordCloud
 import pandas as pd
+import numpy as np
 import emoji
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+# Ensure VADER lexicon is available
+try:
+    sia = SentimentIntensityAnalyzer()
+except Exception:
+    nltk.download('vader_lexicon', quiet=True)
+    sia = SentimentIntensityAnalyzer()
 
 extract = URLExtract()
 
@@ -192,4 +203,228 @@ def activity_heatmap(selected_user, df):
     days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     user_heatmap = df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
     user_heatmap = user_heatmap.reindex([d for d in days_order if d in user_heatmap.index])
-    return user_heatmap
+    return user_heatmap
+
+
+# ==========================================
+# 🚀 NEW FEATURES
+# ==========================================
+
+# 1. SENTIMENT ANALYSIS (VADER)
+def analyze_sentiment(selected_user, df):
+    temp = df[df['user'] != 'group_notification'].copy()
+    if selected_user != 'Overall':
+        temp = temp[temp['user'] == selected_user]
+
+    media_pattern = r'<Media omitted>|This message was deleted|image omitted|video omitted|audio omitted|sticker omitted'
+    temp = temp[~temp['message'].astype(str).str.contains(media_pattern, case=False, regex=True, na=False)]
+
+    if temp.empty:
+        return None
+
+    def get_vader_score(text):
+        return sia.polarity_scores(str(text))['compound']
+
+    temp['compound'] = temp['message'].apply(get_vader_score)
+
+    def categorize_sentiment(score):
+        if score >= 0.05:
+            return 'Positive'
+        elif score <= -0.05:
+            return 'Negative'
+        else:
+            return 'Neutral'
+
+    temp['sentiment'] = temp['compound'].apply(categorize_sentiment)
+    sentiment_counts = temp['sentiment'].value_counts()
+    
+    # Sentiment timeline by month
+    sentiment_monthly = temp.groupby(['year', 'month_num', 'sentiment']).size().unstack(fill_value=0).reset_index()
+    
+    # User-level sentiment breakdown
+    user_sentiment = None
+    if selected_user == 'Overall':
+        user_sentiment = temp.groupby('user')['compound'].mean().reset_index()
+        user_sentiment.columns = ['User', 'Avg Sentiment Score']
+        user_sentiment['Status'] = user_sentiment['Avg Sentiment Score'].apply(
+            lambda x: '😊 Very Positive' if x > 0.15 else ('😃 Positive' if x > 0.03 else ('😐 Neutral' if x >= -0.03 else '😠 Negative'))
+        )
+        user_sentiment.sort_values(by='Avg Sentiment Score', ascending=False, inplace=True)
+
+    return {
+        'counts': sentiment_counts,
+        'avg_compound': round(temp['compound'].mean(), 3),
+        'total_analyzed': len(temp),
+        'user_sentiment': user_sentiment,
+        'sentiment_df': temp
+    }
+
+
+# 2. RESPONSE TIME & INTERACTION DYNAMICS
+def response_time_analysis(df):
+    temp = df[df['user'] != 'group_notification'].copy()
+    temp.sort_values('date', inplace=True)
+    temp['prev_user'] = temp['user'].shift(1)
+    temp['prev_date'] = temp['date'].shift(1)
+
+    # Only look at turns where User B replies to User A (different user)
+    reply_df = temp[(temp['user'] != temp['prev_user']) & (temp['prev_user'].notnull())].copy()
+    reply_df['diff_minutes'] = (reply_df['date'] - reply_df['prev_date']).dt.total_seconds() / 60.0
+
+    # Filter realistic replies (between 5 seconds and 12 hours)
+    valid_replies = reply_df[(reply_df['diff_minutes'] >= 0.08) & (reply_df['diff_minutes'] <= 720)]
+
+    if valid_replies.empty:
+        return pd.DataFrame(columns=['User', 'Avg Response Time (mins)', 'Median (mins)', 'Replies'])
+
+    res_df = valid_replies.groupby('user')['diff_minutes'].agg(['mean', 'median', 'count']).reset_index()
+    res_df.columns = ['User', 'Avg Response Time (mins)', 'Median (mins)', 'Replies']
+    res_df['Avg Response Time (mins)'] = round(res_df['Avg Response Time (mins)'], 1)
+    res_df['Median (mins)'] = round(res_df['Median (mins)'], 1)
+    res_df.sort_values(by='Avg Response Time (mins)', ascending=True, inplace=True)
+    return res_df
+
+
+# 3. CONVERSATION STARTERS & CLOSERS
+def conversation_starters_closers(df, gap_hours=4):
+    temp = df[df['user'] != 'group_notification'].copy()
+    temp.sort_values('date', inplace=True)
+    temp['time_since_prev'] = (temp['date'] - temp['date'].shift(1)).dt.total_seconds() / 3600.0
+
+    # Starters: First message after a silence of >= gap_hours
+    starters = temp[temp['time_since_prev'] >= gap_hours]['user'].value_counts().reset_index()
+    starters.columns = ['User', 'Conversations Started']
+
+    # Closers: Message sent right before the silence
+    closers_indices = temp[temp['time_since_prev'] >= gap_hours].index - 1
+    closers_indices = [idx for idx in closers_indices if idx in temp.index]
+    closers = temp.loc[closers_indices, 'user'].value_counts().reset_index()
+    closers.columns = ['User', 'Conversations Closed (Last Word)']
+
+    return starters, closers
+
+
+# 4. DOMAIN / URL CATEGORIZER
+def extract_top_domains(selected_user, df):
+    temp = df.copy()
+    if selected_user != 'Overall':
+        temp = temp[temp['user'] == selected_user]
+
+    links = []
+    for msg in temp['message']:
+        links.extend(extract.find_urls(str(msg)))
+
+    domains = []
+    for link in links:
+        try:
+            if not link.startswith('http'):
+                link = 'http://' + link
+            domain = urlparse(link).netloc.lower()
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            if domain:
+                domains.append(domain)
+        except Exception:
+            continue
+
+    if not domains:
+        return pd.DataFrame(columns=['Domain', 'Count'])
+
+    counts = Counter(domains).most_common(10)
+    return pd.DataFrame(counts, columns=['Domain', 'Count'])
+
+
+# 5. WHATSAPP WRAPPED / FUN AWARDS GENERATOR
+def generate_wrapped_awards(df):
+    temp = df[df['user'] != 'group_notification'].copy()
+    if temp.empty:
+        return []
+
+    awards = []
+
+    # 1. 👑 The Yapper (Highest Total Words)
+    temp['word_count'] = temp['message'].apply(lambda x: len(str(x).split()))
+    user_words = temp.groupby('user')['word_count'].sum()
+    if not user_words.empty:
+        top_yapper = user_words.idxmax()
+        awards.append({
+            'icon': '👑',
+            'title': 'The Grand Yapper',
+            'winner': top_yapper,
+            'stat': f"{user_words.max():,} words typed",
+            'desc': 'Sent the most total words and never runs out of things to say!'
+        })
+
+    # 2. ⚡ Lightning Replier (Fastest Average Response)
+    res_df = response_time_analysis(df)
+    if not res_df.empty:
+        fastest = res_df.iloc[0]
+        awards.append({
+            'icon': '⚡',
+            'title': 'Lightning Responder',
+            'winner': fastest['User'],
+            'stat': f"{fastest['Avg Response Time (mins)']} mins avg reply",
+            'desc': 'Replies faster than humanly possible. Always online!'
+        })
+        if len(res_df) > 1:
+            slowest = res_df.iloc[-1]
+            awards.append({
+                'icon': '👻',
+                'title': 'The Certified Ghost',
+                'winner': slowest['User'],
+                'stat': f"{slowest['Avg Response Time (mins)']} mins avg reply",
+                'desc': 'Takes their sweet time to reply. Probably left on read!'
+            })
+
+    # 3. 🌙 Night Owl (Most messages between 12 AM - 5 AM)
+    night_msgs = temp[temp['hour'].isin([0, 1, 2, 3, 4])]
+    if not night_msgs.empty:
+        night_winner = night_msgs['user'].value_counts().idxmax()
+        awards.append({
+            'icon': '🌙',
+            'title': 'Ultimate Night Owl',
+            'winner': night_winner,
+            'stat': f"{night_msgs['user'].value_counts().max():,} late-night messages",
+            'desc': 'Thrives after midnight when the rest of the world sleeps.'
+        })
+
+    # 4. 🤣 Laugh Champion
+    laugh_pattern = r'(haha|lol|rofl|lmao|hehe|😂|🤣|😹|xd)'
+    laugh_msgs = temp[temp['message'].astype(str).str.contains(laugh_pattern, case=False, regex=True, na=False)]
+    if not laugh_msgs.empty:
+        laugh_winner = laugh_msgs['user'].value_counts().idxmax()
+        awards.append({
+            'icon': '🤣',
+            'title': 'Chief Humor Officer',
+            'winner': laugh_winner,
+            'stat': f"{laugh_msgs['user'].value_counts().max():,} laughs shared",
+            'desc': 'Finds everything hilarious and keeps the group chat energized!'
+        })
+
+    # 5. 📸 Media Mogul
+    media_pattern = r'<Media omitted>|image omitted|video omitted|sticker omitted'
+    media_msgs = temp[temp['message'].astype(str).str.contains(media_pattern, case=False, regex=True, na=False)]
+    if not media_msgs.empty:
+        media_winner = media_msgs['user'].value_counts().idxmax()
+        awards.append({
+            'icon': '📸',
+            'title': 'Media Mogul',
+            'winner': media_winner,
+            'stat': f"{media_msgs['user'].value_counts().max():,} media items",
+            'desc': 'Communicates exclusively in stickers, memes, and photos.'
+        })
+
+    # 6. 🚀 Conversation Igniter
+    starters, _ = conversation_starters_closers(df)
+    if not starters.empty:
+        starter_winner = starters.iloc[0]
+        awards.append({
+            'icon': '🚀',
+            'title': 'Conversation Igniter',
+            'winner': starter_winner['User'],
+            'stat': f"{starter_winner['Conversations Started']} chats initiated",
+            'desc': 'Revives the chat whenever things get quiet.'
+        })
+
+    return awards
+

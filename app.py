@@ -200,15 +200,44 @@ if uploaded_file is not None:
         st.markdown("<br>", unsafe_allow_html=True)
 
         # --- INTERACTIVE TABS ---
-        tab_trends, tab_users, tab_activity, tab_words_emoji, tab_explorer = st.tabs([
+        tab_wrapped, tab_trends, tab_users, tab_activity, tab_sentiment, tab_words_emoji, tab_explorer = st.tabs([
+            "🎁 WhatsApp Wrapped",
             "📈 Timelines & Trends",
-            "👥 Participants",
+            "👥 Dynamics & Speed",
             "🕒 Activity Patterns",
-            "🔤 Words & Emojis",
+            "🎭 Sentiment & Mood",
+            "🔤 Words, Emojis & Links",
             "🔍 Chat Explorer"
         ])
 
-        # === TAB 1: TIMELINES & TRENDS ===
+        # === TAB 1: WHATSAPP WRAPPED / AWARDS ===
+        with tab_wrapped:
+            st.subheader("🎉 Group Chat Wrapped & Superlatives")
+            st.caption("Fun personality badges and superlatives computed from chat behavior")
+
+            awards = helper.generate_wrapped_awards(df)
+            if awards:
+                # Render award cards in grid of 3
+                for i in range(0, len(awards), 3):
+                    cols = st.columns(3)
+                    for j, award in enumerate(awards[i:i+3]):
+                        with cols[j]:
+                            st.markdown(f"""
+                            <div class="metric-card" style="text-align: left; padding: 22px; margin-bottom: 16px; border-left: 4px solid #25D366;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                    <span style="font-size: 2.2rem;">{award['icon']}</span>
+                                    <span style="background: rgba(37, 211, 102, 0.15); color: #25D366; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">AWARD</span>
+                                </div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 2px;">{award['title']}</div>
+                                <div style="font-size: 1.25rem; font-weight: 800; color: #25D366; margin-bottom: 6px;">{award['winner']}</div>
+                                <div style="font-size: 0.85rem; color: #E2E8F0; font-weight: 500; margin-bottom: 6px;">📊 {award['stat']}</div>
+                                <div style="font-size: 0.8rem; color: #A0AEC0; line-height: 1.3;">{award['desc']}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+            else:
+                st.info("Not enough data to calculate Wrapped awards.")
+
+        # === TAB 2: TIMELINES & TRENDS ===
         with tab_trends:
             col_t1, col_t2 = st.columns([1, 1])
 
@@ -252,7 +281,7 @@ if uploaded_file is not None:
                 else:
                     st.info("No daily timeline data available.")
 
-        # === TAB 2: PARTICIPANTS ===
+        # === TAB 3: DYNAMICS & SPEED ===
         with tab_users:
             if selected_user == "Overall":
                 col_u1, col_u2 = st.columns([1, 1])
@@ -267,7 +296,7 @@ if uploaded_file is not None:
                         color=x.values,
                         color_continuous_scale="Viridis"
                     )
-                    fig_users.update_layout(template="plotly_dark", height=400, coloraxis_showscale=False)
+                    fig_users.update_layout(template="plotly_dark", height=380, coloraxis_showscale=False)
                     st.plotly_chart(fig_users, use_container_width=True)
 
                 with col_u2:
@@ -280,15 +309,72 @@ if uploaded_file is not None:
                         color_discrete_sequence=px.colors.qualitative.Pastel
                     )
                     fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                    fig_pie.update_layout(template="plotly_dark", height=400, showlegend=False)
+                    fig_pie.update_layout(template="plotly_dark", height=380, showlegend=False)
                     st.plotly_chart(fig_pie, use_container_width=True)
 
-                st.subheader("📋 Participant Summary Table")
-                st.dataframe(percent_df, use_container_width=True, hide_index=True)
-            else:
-                st.info(f"You have currently selected **{selected_user}**. Switch to **Overall** in the sidebar to see comparative participant metrics.")
+                st.divider()
 
-        # === TAB 3: ACTIVITY PATTERNS ===
+                # Response Time & Ghosting Analysis
+                st.subheader("⚡ Response Speed & Reply Delays")
+                st.caption("Calculates how quickly participants respond when replying to someone else")
+                res_df = helper.response_time_analysis(df)
+
+                if not res_df.empty:
+                    col_r1, col_r2 = st.columns([1, 1])
+                    with col_r1:
+                        fig_res = px.bar(
+                            res_df.head(10),
+                            x="Avg Response Time (mins)",
+                            y="User",
+                            orientation="h",
+                            labels={"Avg Response Time (mins)": "Average Reply Delay (minutes)", "User": "User"},
+                            color="Avg Response Time (mins)",
+                            color_continuous_scale="Turbo"
+                        )
+                        fig_res.update_layout(template="plotly_dark", height=350, yaxis=dict(autorange="reversed"), coloraxis_showscale=False)
+                        st.plotly_chart(fig_res, use_container_width=True)
+
+                    with col_r2:
+                        st.dataframe(res_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Not enough consecutive replies between participants to calculate response times.")
+
+                st.divider()
+
+                # Conversation Starters vs Closers
+                st.subheader("🚀 Conversation Starters vs Closers")
+                st.caption("Identifies who starts chatting after long silences (> 4 hours) vs who sends the closing message")
+                starters, closers = helper.conversation_starters_closers(df, gap_hours=4)
+
+                col_s1, col_s2 = st.columns([1, 1])
+                with col_s1:
+                    if not starters.empty:
+                        fig_s = px.bar(
+                            starters.head(8),
+                            x="User",
+                            y="Conversations Started",
+                            title="Conversations Initiated",
+                            color="Conversations Started",
+                            color_continuous_scale="Mint"
+                        )
+                        fig_s.update_layout(template="plotly_dark", height=320, coloraxis_showscale=False)
+                        st.plotly_chart(fig_s, use_container_width=True)
+                with col_s2:
+                    if not closers.empty:
+                        fig_c = px.bar(
+                            closers.head(8),
+                            x="User",
+                            y="Conversations Closed (Last Word)",
+                            title="Conversations Closed (Last Word)",
+                            color="Conversations Closed (Last Word)",
+                            color_continuous_scale="Burg"
+                        )
+                        fig_c.update_layout(template="plotly_dark", height=320, coloraxis_showscale=False)
+                        st.plotly_chart(fig_c, use_container_width=True)
+            else:
+                st.info(f"Currently viewing individual stats for **{selected_user}**. Switch to **Overall** in the sidebar to compare member dynamics and response times.")
+
+        # === TAB 4: ACTIVITY PATTERNS ===
         with tab_activity:
             col_a1, col_a2 = st.columns([1, 1])
 
@@ -334,7 +420,57 @@ if uploaded_file is not None:
             else:
                 st.warning("Not enough data to construct an activity heatmap.")
 
-        # === TAB 4: WORDS & EMOJIS ===
+        # === TAB 5: SENTIMENT & MOOD ===
+        with tab_sentiment:
+            st.subheader("🎭 Chat Sentiment & Tone Analysis")
+            st.caption("Powered by VADER (Valence Aware Dictionary and sEntiment Reasoner)")
+
+            sentiment_data = helper.analyze_sentiment(selected_user, df)
+            if sentiment_data is not None:
+                col_sen1, col_sen2 = st.columns([1, 1])
+
+                with col_sen1:
+                    st.markdown(f"""
+                    <div class="metric-card" style="margin-bottom: 20px;">
+                        <div style="font-size: 0.9rem; color: #888; text-transform: uppercase;">Average Polarity Score</div>
+                        <div style="font-size: 2.2rem; font-weight: 800; color: {'#25D366' if sentiment_data['avg_compound'] >= 0.05 else ('#FF5252' if sentiment_data['avg_compound'] <= -0.05 else '#FFD700')};">
+                            {sentiment_data['avg_compound']:+}
+                        </div>
+                        <div style="font-size: 0.85rem; color: #aaa;">Scale: -1.0 (Very Negative) to +1.0 (Very Positive)</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Sentiment Pie Chart
+                    counts = sentiment_data['counts']
+                    fig_sent_pie = px.pie(
+                        values=counts.values,
+                        names=counts.index,
+                        hole=0.45,
+                        color=counts.index,
+                        color_discrete_map={
+                            'Positive': '#25D366',
+                            'Neutral': '#64748B',
+                            'Negative': '#EF4444'
+                        },
+                        title="Sentiment Distribution"
+                    )
+                    fig_sent_pie.update_traces(textposition='inside', textinfo='percent+label')
+                    fig_sent_pie.update_layout(template="plotly_dark", height=320)
+                    st.plotly_chart(fig_sent_pie, use_container_width=True)
+
+                with col_sen2:
+                    if selected_user == "Overall" and sentiment_data['user_sentiment'] is not None:
+                        st.subheader("😊 Participant Sentiment Ranking")
+                        st.dataframe(sentiment_data['user_sentiment'], use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("Sample Message Sentiment Breakdown")
+                        sample_sent = sentiment_data['sentiment_df'][['date', 'user', 'message', 'sentiment', 'compound']].head(20)
+                        sample_sent.rename(columns={'compound': 'Score'}, inplace=True)
+                        st.dataframe(sample_sent, use_container_width=True, hide_index=True)
+            else:
+                st.info("No text messages available for sentiment evaluation.")
+
+        # === TAB 6: WORDS, EMOJIS & LINKS ===
         with tab_words_emoji:
             col_w1, col_w2 = st.columns([1, 1])
 
@@ -375,8 +511,8 @@ if uploaded_file is not None:
 
             st.divider()
 
-            # Emoji Section with Native Unicode Browser Rendering (fixes missing box fonts!)
-            st.subheader("😀 Emoji Analysis")
+            # Emoji Section
+            st.subheader("😀 Emoji Breakdown")
             emoji_df = helper.emoji_helper(selected_user, df)
 
             if not emoji_df.empty:
@@ -394,11 +530,10 @@ if uploaded_file is not None:
                         textinfo='percent+label',
                         textfont_size=16
                     )
-                    fig_emoji.update_layout(template="plotly_dark", height=380)
+                    fig_emoji.update_layout(template="plotly_dark", height=350)
                     st.plotly_chart(fig_emoji, use_container_width=True)
 
                 with col_e2:
-                    st.caption("Top 10 Emojis Frequency")
                     fig_bar_emoji = px.bar(
                         emoji_df.head(10),
                         x="emoji",
@@ -409,7 +544,7 @@ if uploaded_file is not None:
                     )
                     fig_bar_emoji.update_layout(
                         template="plotly_dark",
-                        height=380,
+                        height=350,
                         coloraxis_showscale=False,
                         xaxis=dict(tickfont=dict(size=18))
                     )
@@ -417,7 +552,26 @@ if uploaded_file is not None:
             else:
                 st.info("No emojis detected in this chat.")
 
-        # === TAB 5: CHAT EXPLORER ===
+            st.divider()
+
+            # Web Domains / Links Section
+            st.subheader("🔗 Top Shared Domains & Websites")
+            domain_df = helper.extract_top_domains(selected_user, df)
+            if not domain_df.empty:
+                fig_domains = px.bar(
+                    domain_df,
+                    x="Count",
+                    y="Domain",
+                    orientation="h",
+                    color="Count",
+                    color_continuous_scale="Burgyl"
+                )
+                fig_domains.update_layout(template="plotly_dark", height=320, yaxis=dict(autorange="reversed"), coloraxis_showscale=False)
+                st.plotly_chart(fig_domains, use_container_width=True)
+            else:
+                st.info("No external web links detected in this chat.")
+
+        # === TAB 7: CHAT EXPLORER ===
         with tab_explorer:
             st.subheader("🔍 Message Search & Chat Logs")
             search_query = st.text_input("Search messages by keyword:", placeholder="e.g. happy, project, meeting...")
