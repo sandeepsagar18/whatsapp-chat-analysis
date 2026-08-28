@@ -150,15 +150,14 @@ if uploaded_file is not None:
             df['message'] = df['message'].apply(lambda x: helper.mask_pii_in_text(x, mask_style=mask_style))
 
         # --- HEADER BANNER ---
-        st.markdown(f"""
-        <div class="header-box">
-            <h2 style="margin: 0; padding: 0;">📊 Chat Analysis Dashboard</h2>
-            <p style="margin: 4px 0 0 0; opacity: 0.9;">
-                Analyzing <b>{selected_user}</b> &bull; {df['only_date'].min().strftime('%d %b %Y')} to {df['only_date'].max().strftime('%d %b %Y')}
-                {' &bull; <span style="background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;">🛡️ PII Masked Mode</span>' if mask_pii_enabled else ''}
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        banner_info = f"Analyzing <b>{selected_user}</b> &bull; {df['only_date'].min().strftime('%d %b %Y')} to {df['only_date'].max().strftime('%d %b %Y')}"
+        if mask_pii_enabled:
+            banner_info += ' &bull; <span style="background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;">🛡️ PII Masked Mode</span>'
+
+        st.markdown(
+            f'<div class="header-box"><h2 style="margin:0;padding:0;">📊 Chat Analysis Dashboard</h2><p style="margin:4px 0 0 0;opacity:0.9;">{banner_info}</p></div>',
+            unsafe_allow_html=True
+        )
 
         # --- TOP KPI METRICS ---
         raw_stats = helper.fetch_stats(selected_user, df)
@@ -179,53 +178,17 @@ if uploaded_file is not None:
         col1, col2, col3, col4, col5, col6 = st.columns(6)
 
         with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-icon">💬</div>
-                <div class="metric-value">{stats['num_messages']:,}</div>
-                <div class="metric-label">Messages</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-icon">💬</div><div class="metric-value">{stats["num_messages"]:,}</div><div class="metric-label">Messages</div></div>', unsafe_allow_html=True)
         with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-icon">📝</div>
-                <div class="metric-value">{stats['num_words']:,}</div>
-                <div class="metric-label">Total Words</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-icon">📝</div><div class="metric-value">{stats["num_words"]:,}</div><div class="metric-label">Total Words</div></div>', unsafe_allow_html=True)
         with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-icon">🖼️</div>
-                <div class="metric-value">{stats['num_media']:,}</div>
-                <div class="metric-label">Media Shared</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-icon">🖼️</div><div class="metric-value">{stats["num_media"]:,}</div><div class="metric-label">Media Shared</div></div>', unsafe_allow_html=True)
         with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-icon">🔗</div>
-                <div class="metric-value">{stats['num_links']:,}</div>
-                <div class="metric-label">Links Shared</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-icon">🔗</div><div class="metric-value">{stats["num_links"]:,}</div><div class="metric-label">Links Shared</div></div>', unsafe_allow_html=True)
         with col5:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-icon">😀</div>
-                <div class="metric-value">{stats['num_emojis']:,}</div>
-                <div class="metric-label">Emojis Used</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-icon">😀</div><div class="metric-value">{stats["num_emojis"]:,}</div><div class="metric-label">Emojis Used</div></div>', unsafe_allow_html=True)
         with col6:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-icon">⚡</div>
-                <div class="metric-value">{stats['avg_words_per_msg']}</div>
-                <div class="metric-label">Avg Words / Msg</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-icon">⚡</div><div class="metric-value">{stats["avg_words_per_msg"]}</div><div class="metric-label">Avg Words / Msg</div></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -253,18 +216,19 @@ if uploaded_file is not None:
                     cols = st.columns(3)
                     for j, award in enumerate(awards[i:i+3]):
                         with cols[j]:
-                            st.markdown(f"""
-                            <div class="metric-card" style="text-align: left; padding: 22px; margin-bottom: 16px; border-left: 4px solid #25D366;">
-                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                                    <span style="font-size: 2.2rem;">{award['icon']}</span>
-                                    <span style="background: rgba(37, 211, 102, 0.15); color: #25D366; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">AWARD</span>
-                                </div>
-                                <div style="font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 2px;">{award['title']}</div>
-                                <div style="font-size: 1.25rem; font-weight: 800; color: #25D366; margin-bottom: 6px;">{award['winner']}</div>
-                                <div style="font-size: 0.85rem; color: #E2E8F0; font-weight: 500; margin-bottom: 6px;">📊 {award['stat']}</div>
-                                <div style="font-size: 0.8rem; color: #A0AEC0; line-height: 1.3;">{award['desc']}</div>
-                            </div>
-                            """, unsafe_allow_html=True)
+                            card_html = (
+                                f'<div class="metric-card" style="text-align:left;padding:22px;margin-bottom:16px;border-left:4px solid #25D366;">'
+                                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+                                f'<span style="font-size:2.2rem;">{award["icon"]}</span>'
+                                f'<span style="background:rgba(37,211,102,0.15);color:#25D366;padding:4px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;">AWARD</span>'
+                                f'</div>'
+                                f'<div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:2px;">{award["title"]}</div>'
+                                f'<div style="font-size:1.25rem;font-weight:800;color:#25D366;margin-bottom:6px;">{award["winner"]}</div>'
+                                f'<div style="font-size:0.85rem;color:#E2E8F0;font-weight:500;margin-bottom:6px;">📊 {award["stat"]}</div>'
+                                f'<div style="font-size:0.8rem;color:#A0AEC0;line-height:1.3;">{award["desc"]}</div>'
+                                f'</div>'
+                            )
+                            st.markdown(card_html, unsafe_allow_html=True)
             else:
                 st.info("Not enough data to calculate Wrapped awards.")
 
@@ -499,15 +463,11 @@ if uploaded_file is not None:
                 col_sen1, col_sen2 = st.columns([1, 1])
 
                 with col_sen1:
-                    st.markdown(f"""
-                    <div class="metric-card" style="margin-bottom: 20px;">
-                        <div style="font-size: 0.9rem; color: #888; text-transform: uppercase;">Average Polarity Score</div>
-                        <div style="font-size: 2.2rem; font-weight: 800; color: {'#25D366' if sentiment_data['avg_compound'] >= 0.05 else ('#FF5252' if sentiment_data['avg_compound'] <= -0.05 else '#FFD700')};">
-                            {sentiment_data['avg_compound']:+}
-                        </div>
-                        <div style="font-size: 0.85rem; color: #aaa;">Scale: -1.0 (Very Negative) to +1.0 (Very Positive)</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    polarity_color = '#25D366' if sentiment_data['avg_compound'] >= 0.05 else ('#FF5252' if sentiment_data['avg_compound'] <= -0.05 else '#FFD700')
+                    st.markdown(
+                        f'<div class="metric-card" style="margin-bottom: 20px;"><div style="font-size: 0.9rem; color: #888; text-transform: uppercase;">Average Polarity Score</div><div style="font-size: 2.2rem; font-weight: 800; color: {polarity_color};">{sentiment_data["avg_compound"]:+}</div><div style="font-size: 0.85rem; color: #aaa;">Scale: -1.0 (Very Negative) to +1.0 (Very Positive)</div></div>',
+                        unsafe_allow_html=True
+                    )
 
                     # Sentiment Pie Chart
                     counts = sentiment_data['counts']
@@ -649,31 +609,15 @@ if uploaded_file is not None:
             col_p1, col_p2, col_p3 = st.columns(3)
 
             with col_p1:
-                st.markdown(f"""
-                <div class="metric-card" style="border-left: 4px solid {'#EF4444' if total_pii > 0 else '#25D366'};">
-                    <div class="metric-icon">🔍</div>
-                    <div class="metric-value" style="color: {'#EF4444' if total_pii > 0 else '#25D366'};">{total_pii:,}</div>
-                    <div class="metric-label">Total PII Entities Found</div>
-                </div>
-                """, unsafe_allow_html=True)
+                pii_color = '#EF4444' if total_pii > 0 else '#25D366'
+                st.markdown(f'<div class="metric-card" style="border-left: 4px solid {pii_color};"><div class="metric-icon">🔍</div><div class="metric-value" style="color:{pii_color};">{total_pii:,}</div><div class="metric-label">Total PII Entities Found</div></div>', unsafe_allow_html=True)
             with col_p2:
                 categories_found = len(pii_summary['category_counts'])
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-icon">🗂️</div>
-                    <div class="metric-value">{categories_found}</div>
-                    <div class="metric-label">PII Categories Detected</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-card"><div class="metric-icon">🗂️</div><div class="metric-value">{categories_found}</div><div class="metric-label">PII Categories Detected</div></div>', unsafe_allow_html=True)
             with col_p3:
                 masked_status = "✅ ACTIVE" if mask_pii_enabled else "⚠️ OFF"
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-icon">🛡️</div>
-                    <div class="metric-value" style="color: {'#25D366' if mask_pii_enabled else '#F59E0B'};">{masked_status}</div>
-                    <div class="metric-label">Dashboard Masking Status</div>
-                </div>
-                """, unsafe_allow_html=True)
+                status_color = '#25D366' if mask_pii_enabled else '#F59E0B'
+                st.markdown(f'<div class="metric-card"><div class="metric-icon">🛡️</div><div class="metric-value" style="color:{status_color};">{masked_status}</div><div class="metric-label">Dashboard Masking Status</div></div>', unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -781,20 +725,17 @@ if uploaded_file is not None:
                                 badge_bg = "rgba(37, 211, 102, 0.15)" if is_phone else "rgba(59, 130, 246, 0.15)"
                                 badge_color = "#25D366" if is_phone else "#60A5FA"
                                 
-                                st.markdown(f"""
-                                <div class="metric-card" style="text-align: left; padding: 18px 20px; margin-bottom: 12px; border-top: 3px solid {badge_color};">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                        <span style="font-weight: 700; font-size: 1.05rem; color: #F1F5F9;">👤 {contact['Sender']}</span>
-                                        <span style="background: {badge_bg}; color: {badge_color}; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">{contact['Type']}</span>
-                                    </div>
-                                    <div style="font-size: 1.25rem; font-weight: 800; color: #fff; margin-bottom: 6px; letter-spacing: 0.02em;">
-                                        {contact['Contact Detail']}
-                                    </div>
-                                    <div style="font-size: 0.8rem; color: #94A3B8; margin-bottom: 12px; background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 8px;">
-                                        💬 <i>"{contact['Context']}"</i>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                card_html = (
+                                    f'<div class="metric-card" style="text-align:left;padding:18px 20px;margin-bottom:12px;border-top:3px solid {badge_color};">'
+                                    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+                                    f'<span style="font-weight:700;font-size:1.05rem;color:#F1F5F9;">👤 {contact["Sender"]}</span>'
+                                    f'<span style="background:{badge_bg};color:{badge_color};padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;">{contact["Type"]}</span>'
+                                    f'</div>'
+                                    f'<div style="font-size:1.25rem;font-weight:800;color:#fff;margin-bottom:6px;letter-spacing:0.02em;">{contact["Contact Detail"]}</div>'
+                                    f'<div style="font-size:0.8rem;color:#94A3B8;margin-bottom:12px;background:rgba(0,0,0,0.25);padding:8px 10px;border-radius:8px;">💬 <i>"{contact["Context"]}"</i></div>'
+                                    f'</div>'
+                                )
+                                st.markdown(card_html, unsafe_allow_html=True)
 
                                 # Action buttons underneath the card
                                 if is_phone:
