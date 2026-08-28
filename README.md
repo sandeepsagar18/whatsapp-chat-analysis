@@ -53,10 +53,18 @@
 - **Native Unicode Emoji Charts**: Interactive donut and bar charts rendering full Unicode emojis crisply (no missing `□` font boxes).
 - **Shared Web Domains**: Extracts and ranks shared URLs (YouTube, Instagram, GitHub, Spotify, etc.).
 
-### 🔍 6. Chat Explorer & CSV Export
-- Real-time keyword search across all messages.
-- Clean tabular message view with timestamp, sender, and content.
-- One-click **Download Filtered Data as CSV** button.
+### 🛡️ 7. Sensitive Data (PII) Detector & Redactor
+- **Automatic Detection of High-Risk PII**:
+  - 📞 **Phone Numbers**: 10-digit mobile, international codes (`+91`, `+1`), formatted numbers.
+  - 📧 **Email Addresses**: Complete email address patterns.
+  - 💳 **Financial & Card Numbers**: Credit/Debit card sequences and bank account numbers.
+  - 🆔 **National IDs**: Indian Aadhaar format, US SSN, PAN card IDs (`[A-Z]{5}[0-9]{4}[A-Z]`).
+  - 💸 **UPI & Payment IDs**: Handles `@oksbi`, `@paytm`, `@okhdfcbank`, `@ybl`, `@upi`, etc.
+  - 🌐 **IP Addresses & URLs**: IPv4, IPv6, web URLs.
+  - 📍 **PIN / Postal Codes**: 6-digit Indian PIN codes, 5-digit US ZIP codes.
+- **Multiple Masking Styles**: `[TAG] [REDACTED: TYPE]`, `Solid Block (████████)`, and `Partial Asterisk (p***@gmail.com)`.
+- **Global Privacy Mode**: One-click toggle in sidebar to anonymize the whole dashboard for screen sharing.
+- **Sanitized Chat Export**: Download privacy-safe redacted `.txt` and `.csv` files.
 
 ---
 

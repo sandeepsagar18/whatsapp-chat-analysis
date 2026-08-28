@@ -120,12 +120,42 @@ if uploaded_file is not None:
                 if len(date_range) == 2:
                     df = df[(df['only_date'] >= date_range[0]) & (df['only_date'] <= date_range[1])]
 
+            st.divider()
+            st.subheader("🛡️ Privacy & PII Guard")
+            mask_pii_enabled = st.checkbox(
+                "Anonymize / Mask PII Data",
+                value=False,
+                help="Automatically masks phone numbers, emails, URLs, payment IDs, and account numbers across the dashboard."
+            )
+            mask_style = "tag"
+            if mask_pii_enabled:
+                mask_choice = st.radio(
+                    "Masking Style",
+                    ["[TAG] [REDACTED: TYPE]", "Asterisk (p***@gmail.com)", "Solid Block (██████)"],
+                    index=0
+                )
+                if "[TAG]" in mask_choice:
+                    mask_style = "tag"
+                elif "Asterisk" in mask_choice:
+                    mask_style = "asterisk"
+                else:
+                    mask_style = "block"
+
+        # Pre-compute PII Analysis on unmasked data before optional visual masking
+        raw_df_for_pii = df.copy()
+        pii_summary = helper.analyze_pii_in_chat(raw_df_for_pii)
+
+        # If user toggles global anonymizer, mask messages in working df
+        if mask_pii_enabled:
+            df['message'] = df['message'].apply(lambda x: helper.mask_pii_in_text(x, mask_style=mask_style))
+
         # --- HEADER BANNER ---
         st.markdown(f"""
         <div class="header-box">
             <h2 style="margin: 0; padding: 0;">📊 Chat Analysis Dashboard</h2>
             <p style="margin: 4px 0 0 0; opacity: 0.9;">
                 Analyzing <b>{selected_user}</b> &bull; {df['only_date'].min().strftime('%d %b %Y')} to {df['only_date'].max().strftime('%d %b %Y')}
+                {' &bull; <span style="background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;">🛡️ PII Masked Mode</span>' if mask_pii_enabled else ''}
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -200,13 +230,14 @@ if uploaded_file is not None:
         st.markdown("<br>", unsafe_allow_html=True)
 
         # --- INTERACTIVE TABS ---
-        tab_wrapped, tab_trends, tab_users, tab_activity, tab_sentiment, tab_words_emoji, tab_explorer = st.tabs([
+        tab_wrapped, tab_trends, tab_users, tab_activity, tab_sentiment, tab_words_emoji, tab_pii, tab_explorer = st.tabs([
             "🎁 WhatsApp Wrapped",
             "📈 Timelines & Trends",
             "👥 Dynamics & Speed",
             "🕒 Activity Patterns",
             "🎭 Sentiment & Mood",
             "🔤 Words, Emojis & Links",
+            "🛡️ PII & Privacy Guard",
             "🔍 Chat Explorer"
         ])
 
@@ -571,7 +602,129 @@ if uploaded_file is not None:
             else:
                 st.info("No external web links detected in this chat.")
 
-        # === TAB 7: CHAT EXPLORER ===
+        # === TAB 7: PII & PRIVACY GUARD ===
+        with tab_pii:
+            st.subheader("🛡️ Sensitive Data (PII) Audit & Protection")
+            st.caption("Automatically scans conversations for exposed phone numbers, email addresses, payment IDs, URLs, and account numbers.")
+
+            total_pii = pii_summary['total_pii_count']
+            col_p1, col_p2, col_p3 = st.columns(3)
+
+            with col_p1:
+                st.markdown(f"""
+                <div class="metric-card" style="border-left: 4px solid {'#EF4444' if total_pii > 0 else '#25D366'};">
+                    <div class="metric-icon">🔍</div>
+                    <div class="metric-value" style="color: {'#EF4444' if total_pii > 0 else '#25D366'};">{total_pii:,}</div>
+                    <div class="metric-label">Total PII Entities Found</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_p2:
+                categories_found = len(pii_summary['category_counts'])
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">🗂️</div>
+                    <div class="metric-value">{categories_found}</div>
+                    <div class="metric-label">PII Categories Detected</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_p3:
+                masked_status = "✅ ACTIVE" if mask_pii_enabled else "⚠️ OFF"
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-icon">🛡️</div>
+                    <div class="metric-value" style="color: {'#25D366' if mask_pii_enabled else '#F59E0B'};">{masked_status}</div>
+                    <div class="metric-label">Dashboard Masking Status</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if total_pii > 0:
+                col_chart1, col_chart2 = st.columns([1, 1])
+
+                with col_chart1:
+                    st.subheader("📊 PII Breakdown by Category")
+                    cat_counts = pii_summary['category_counts']
+                    fig_pii_pie = px.pie(
+                        values=cat_counts.values,
+                        names=cat_counts.index,
+                        hole=0.4,
+                        color_discrete_sequence=px.colors.qualitative.Safe
+                    )
+                    fig_pii_pie.update_traces(textposition='inside', textinfo='percent+label')
+                    fig_pii_pie.update_layout(template="plotly_dark", height=340)
+                    st.plotly_chart(fig_pii_pie, use_container_width=True)
+
+                with col_chart2:
+                    st.subheader("👤 Senders with Most Exposed PII")
+                    user_pii = pii_summary['user_pii_counts'].head(8)
+                    fig_pii_user = px.bar(
+                        user_pii,
+                        x="User",
+                        y="PII Shared Count",
+                        color="PII Shared Count",
+                        color_continuous_scale="Reds"
+                    )
+                    fig_pii_user.update_layout(template="plotly_dark", height=340, coloraxis_showscale=False)
+                    st.plotly_chart(fig_pii_user, use_container_width=True)
+
+                st.divider()
+
+                # Detailed PII Audit Records
+                st.subheader("📋 Detected Sensitive Information Log")
+                st.caption("Review exposed values before masking or sharing with third parties.")
+                records_df = pii_summary['pii_records_df'].copy()
+                
+                # Option to toggle visibility of raw values inside this tab
+                show_unmasked = st.checkbox("👁️ Reveal unmasked sensitive values in table below", value=False)
+                if not show_unmasked:
+                    records_df['Exposed Value'] = records_df['Exposed Value'].apply(lambda x: helper.mask_pii_in_text(x, mask_style="asterisk"))
+                    records_df['Original Message'] = records_df['Original Message'].apply(lambda x: helper.mask_pii_in_text(x, mask_style="tag"))
+
+                st.dataframe(records_df, use_container_width=True, hide_index=True)
+
+                st.divider()
+
+                # Export Fully Redacted Clean Chat
+                st.subheader("📥 Export Privacy-Sanitized Chat")
+                st.write("Generate a clean version of this chat file with all phone numbers, emails, IDs, and financial tokens completely redacted.")
+
+                clean_mask_style = st.selectbox(
+                    "Select Export Masking Format",
+                    ["[TAG] e.g. [REDACTED: PHONE NUMBER]", "Solid Block e.g. ████████", "Partial Asterisk e.g. +91 98****3210"],
+                    index=0
+                )
+                export_style = "tag" if "[TAG]" in clean_mask_style else ("block" if "Solid" in clean_mask_style else "asterisk")
+
+                sanitized_df = df.copy()
+                sanitized_df['message'] = sanitized_df['message'].apply(lambda x: helper.mask_pii_in_text(x, mask_style=export_style))
+                
+                # Format as downloadable .txt file
+                txt_lines = []
+                for _, row in sanitized_df.iterrows():
+                    txt_lines.append(f"{row['date'].strftime('%m/%d/%y, %I:%M %p')} - {row['user']}: {row['message']}")
+                sanitized_txt = "\n".join(txt_lines)
+
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    st.download_button(
+                        label="🛡️ Download Redacted Chat (.txt)",
+                        data=sanitized_txt.encode('utf-8'),
+                        file_name="sanitized_whatsapp_chat.txt",
+                        mime="text/plain"
+                    )
+                with col_dl2:
+                    csv_sanitized = sanitized_df[['date', 'user', 'message']].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📊 Download Redacted Chat (.csv)",
+                        data=csv_sanitized,
+                        file_name="sanitized_whatsapp_chat.csv",
+                        mime="text/csv"
+                    )
+            else:
+                st.success("🎉 No sensitive PII entities (phone numbers, emails, IDs, payment tokens) were detected in this chat.")
+
+        # === TAB 8: CHAT EXPLORER ===
         with tab_explorer:
             st.subheader("🔍 Message Search & Chat Logs")
             search_query = st.text_input("Search messages by keyword:", placeholder="e.g. happy, project, meeting...")

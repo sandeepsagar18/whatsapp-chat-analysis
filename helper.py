@@ -1,4 +1,5 @@
 import os
+import re
 from collections import Counter
 from urllib.parse import urlparse
 from urlextract import URLExtract
@@ -427,4 +428,137 @@ def generate_wrapped_awards(df):
         })
 
     return awards
+
+
+# ==========================================
+# 🛡️ PII DETECTOR & REDACTOR ENGINE
+# ==========================================
+
+PII_PATTERNS = {
+    'Email Address': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+    'Phone Number': r'(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\b(?:\d{3,5}[-.\s]?\d{4,6}|\d{10})\b',
+    'UPI / Payment ID': r'\b[a-zA-Z0-9.\-_]{2,50}@(oksbi|okhdfcbank|okaxis|okicici|paytm|ybl|ibl|axl|upi|sbi|hdfcbank|icici|barodampay|fbl|idfcbank|postbank|waaxis|wahdfc|waicici|wasbi)\b',
+    'Card / Account Number': r'\b(?:\d{4}[ -]?){3}\d{4}\b',
+    'Aadhaar / National ID': r'\b\d{4}\s\d{4}\s\d{4}\b|\b\d{3}-\d{2}-\d{4}\b',
+    'PAN Card (India)': r'\b[A-Z]{5}[0-9]{4}[A-Z]\b',
+    'URL / Link': r'https?://[^\s<>"]+|www\.[^\s<>"]+',
+    'IP Address': r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
+    'PIN / Postal Code': r'\b[1-9][0-9]{2}\s?[0-9]{3}\b'
+}
+
+def detect_pii_in_text(text):
+    """Scans text and returns a dictionary of detected PII matches by category."""
+    detected = []
+    text_str = str(text)
+    
+    # Avoid scanning omitted media tags
+    if '<Media omitted>' in text_str or 'This message was deleted' in text_str:
+        return detected
+
+    for category, pattern in PII_PATTERNS.items():
+        # Special check for phone numbers to avoid matching plain dates or small numbers
+        matches = re.finditer(pattern, text_str, flags=re.IGNORECASE)
+        for match in matches:
+            val = match.group().strip()
+            # Filter out non-phone numeric strings (e.g. timestamps like 12:30 or single short numbers)
+            if category == 'Phone Number':
+                digits_only = re.sub(r'\D', '', val)
+                if len(digits_only) < 10 or len(digits_only) > 13:
+                    continue
+                if ':' in val or '/' in val:
+                    continue
+            elif category == 'PIN / Postal Code':
+                digits_only = re.sub(r'\D', '', val)
+                if len(digits_only) != 6:
+                    continue
+
+            detected.append({
+                'category': category,
+                'value': val,
+                'start': match.start(),
+                'end': match.end()
+            })
+    return detected
+
+
+def mask_pii_in_text(text, mask_style="tag"):
+    """
+    Masks detected PII in text.
+    mask_style options:
+      - 'tag': [REDACTED: PHONE NUMBER]
+      - 'block': ████████
+      - 'asterisk': p***@gmail.com / +91 98*****
+    """
+    text_str = str(text)
+    if '<Media omitted>' in text_str or 'This message was deleted' in text_str:
+        return text_str
+
+    for category, pattern in PII_PATTERNS.items():
+        def replace_fn(match):
+            val = match.group()
+            if category == 'Phone Number':
+                digits_only = re.sub(r'\D', '', val)
+                if len(digits_only) < 10 or len(digits_only) > 13 or ':' in val or '/' in val:
+                    return val
+            elif category == 'PIN / Postal Code':
+                digits_only = re.sub(r'\D', '', val)
+                if len(digits_only) != 6:
+                    return val
+
+            if mask_style == "tag":
+                return f"[REDACTED: {category.upper()}]"
+            elif mask_style == "block":
+                return "█" * max(len(val), 6)
+            elif mask_style == "asterisk":
+                if len(val) <= 4:
+                    return "*" * len(val)
+                return val[:2] + ("*" * (len(val) - 4)) + val[-2:]
+            return "[REDACTED]"
+
+        text_str = re.sub(pattern, replace_fn, text_str, flags=re.IGNORECASE)
+    return text_str
+
+
+def analyze_pii_in_chat(df):
+    """Performs full chat PII detection and aggregates summary metrics."""
+    temp = df[df['user'] != 'group_notification'].copy()
+    
+    all_detections = []
+    for idx, row in temp.iterrows():
+        matches = detect_pii_in_text(row['message'])
+        for m in matches:
+            all_detections.append({
+                'Date': row['date'],
+                'User': row['user'],
+                'Category': m['category'],
+                'Exposed Value': m['value'],
+                'Original Message': row['message']
+            })
+
+    if not all_detections:
+        return {
+            'total_pii_count': 0,
+            'category_counts': pd.Series(dtype=int),
+            'user_pii_counts': pd.DataFrame(columns=['User', 'PII Shared Count']),
+            'pii_records_df': pd.DataFrame(columns=['Date', 'User', 'Category', 'Exposed Value', 'Original Message']),
+            'redacted_df': df.copy()
+        }
+
+    pii_df = pd.DataFrame(all_detections)
+    category_counts = pii_df['Category'].value_counts()
+    user_pii_counts = pii_df['User'].value_counts().reset_index()
+    user_pii_counts.columns = ['User', 'PII Shared Count']
+
+    # Generate a redacted DataFrame copy
+    redacted_df = df.copy()
+    redacted_df['message'] = redacted_df['message'].apply(lambda x: mask_pii_in_text(x, mask_style="tag"))
+
+    return {
+        'total_pii_count': len(pii_df),
+        'category_counts': category_counts,
+        'user_pii_counts': user_pii_counts,
+        'pii_records_df': pii_df,
+        'redacted_df': redacted_df
+    }
+
 
