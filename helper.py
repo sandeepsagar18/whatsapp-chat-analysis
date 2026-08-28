@@ -561,4 +561,77 @@ def analyze_pii_in_chat(df):
         'redacted_df': redacted_df
     }
 
+
+def extract_contacts_directory(df):
+    """
+    Scans the chat for all phone numbers and emails, clean-formats them,
+    and creates one-click clickable actions:
+      - WhatsApp: https://wa.me/...
+      - Call: tel:...
+      - Email: mailto:...
+    Also generates downloadable vCard (.vcf) format.
+    """
+    temp = df[df['user'] != 'group_notification'].copy()
+    contacts = []
+    seen = set()
+
+    for _, row in temp.iterrows():
+        matches = detect_pii_in_text(row['message'])
+        for m in matches:
+            cat = m['category']
+            val = m['value']
+
+            if cat == 'Phone Number':
+                clean_digits = re.sub(r'\D', '', val)
+                if len(clean_digits) == 10:
+                    # Default to India (+91) if 10-digit number without country code
+                    clean_digits = "91" + clean_digits
+                key = ('phone', clean_digits)
+                if key not in seen:
+                    seen.add(key)
+                    contacts.append({
+                        'Type': '📞 Phone',
+                        'Sender': row['user'],
+                        'Contact Detail': val,
+                        'WhatsApp Link': f"https://wa.me/{clean_digits}",
+                        'Call Action': f"tel:+{clean_digits}",
+                        'Action Type': 'phone',
+                        'Date Shared': row['date'],
+                        'Context': row['message']
+                    })
+
+            elif cat == 'Email Address':
+                clean_email = val.strip().lower()
+                key = ('email', clean_email)
+                if key not in seen:
+                    seen.add(key)
+                    contacts.append({
+                        'Type': '📧 Email',
+                        'Sender': row['user'],
+                        'Contact Detail': clean_email,
+                        'Email Action': f"mailto:{clean_email}?subject=Connecting%20via%20WhatsApp%20Chat",
+                        'Action Type': 'email',
+                        'Date Shared': row['date'],
+                        'Context': row['message']
+                    })
+
+    contacts_df = pd.DataFrame(contacts)
+    
+    # Generate vCard (.vcf) content for phone contacts
+    vcard_entries = []
+    for idx, c in enumerate(contacts):
+        vcard_entries.append("BEGIN:VCARD")
+        vcard_entries.append("VERSION:3.0")
+        vcard_entries.append(f"FN:{c['Sender']} (WA Contact {idx+1})")
+        if c['Action Type'] == 'phone':
+            vcard_entries.append(f"TEL;TYPE=CELL:{c['Contact Detail']}")
+        elif c['Action Type'] == 'email':
+            vcard_entries.append(f"EMAIL;TYPE=INTERNET:{c['Contact Detail']}")
+        vcard_entries.append(f"NOTE:Extracted from WhatsApp Chat on {c['Date Shared']}")
+        vcard_entries.append("END:VCARD\n")
+    
+    vcard_data = "\n".join(vcard_entries)
+    return contacts_df, vcard_data
+
+
 

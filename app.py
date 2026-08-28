@@ -710,6 +710,61 @@ if uploaded_file is not None:
                         hide_index=True
                     )
 
+                # ==========================================
+                # 📇 CONTACT DIRECTORY & ONE-CLICK ACTIONS
+                # ==========================================
+                contacts_df, vcard_data = helper.extract_contacts_directory(raw_df_for_pii)
+                if not contacts_df.empty:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.subheader("📇 Contact Finder & Direct Reachout")
+                    st.caption("One-click actions to call, WhatsApp, or email any contact shared in this conversation.")
+
+                    col_card_actions, col_card_dl = st.columns([2, 1])
+
+                    # Prepare display columns
+                    contact_view = contacts_df.copy()
+                    if 'WhatsApp Link' not in contact_view.columns:
+                        contact_view['WhatsApp Link'] = None
+                    if 'Email Action' not in contact_view.columns:
+                        contact_view['Email Action'] = None
+
+                    st.dataframe(
+                        contact_view[['Type', 'Sender', 'Contact Detail', 'WhatsApp Link', 'Email Action', 'Context']],
+                        column_config={
+                            "WhatsApp Link": st.column_config.LinkColumn(
+                                "💬 WhatsApp",
+                                help="Click to open direct WhatsApp conversation",
+                                display_text="Chat on WhatsApp ↗"
+                            ),
+                            "Email Action": st.column_config.LinkColumn(
+                                "✉️ Email",
+                                help="Click to compose an email",
+                                display_text="Send Email ↗"
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    # Export contacts as vCard (.vcf) and CSV
+                    col_vcf, col_ccsv = st.columns(2)
+                    with col_vcf:
+                        st.download_button(
+                            label="📇 Export All Contacts to Phone Book (.vcf)",
+                            data=vcard_data.encode('utf-8'),
+                            file_name="whatsapp_extracted_contacts.vcf",
+                            mime="text/vcard",
+                            help="Download vCard to import all found numbers and emails directly into Android / iPhone / Google Contacts."
+                        )
+                    with col_ccsv:
+                        contacts_csv = contact_view.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📋 Download Contacts as CSV",
+                            data=contacts_csv,
+                            file_name="whatsapp_contacts_list.csv",
+                            mime="text/csv"
+                        )
+
                 st.divider()
 
                 # Export Fully Redacted Clean Chat

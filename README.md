@@ -66,6 +66,13 @@
 - **Global Privacy Mode**: One-click toggle in sidebar to anonymize the whole dashboard for screen sharing.
 - **Sanitized Chat Export**: Download privacy-safe redacted `.txt` and `.csv` files.
 
+### 📇 8. Contact Finder & One-Click Reachout
+- **Direct 💬 WhatsApp Link**: Opens a direct chat on WhatsApp with detected numbers (`https://wa.me/...`).
+- **Direct 📞 Phone Call Link**: Trigger direct dialer calls via `tel:...`.
+- **Direct ✉️ Email Link**: Compose emails directly via `mailto:...`.
+- **vCard (.vcf) Export**: One-click download to import all found contacts directly into Google Contacts, Apple Contacts, or Android phone books.
+- **Contacts CSV Export**: Export clean lead lists with sender name, contact type, and message context.
+
 ---
 
 ## 🛠️ Tech Stack
