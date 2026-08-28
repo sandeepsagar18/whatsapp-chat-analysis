@@ -683,6 +683,33 @@ if uploaded_file is not None:
 
                 st.dataframe(records_df, use_container_width=True, hide_index=True)
 
+                # Dedicated Clickable Links Explorer
+                urls_detected = pii_summary['pii_records_df'][pii_summary['pii_records_df']['Category'] == 'URL / Link'].copy()
+                if not urls_detected.empty:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.subheader("🔗 Clickable Detected Web Links")
+                    st.caption("Click directly on any link below to open and inspect the webpage.")
+
+                    # Ensure standard http/https format for LinkColumn
+                    urls_display = urls_detected[['Date', 'User', 'Exposed Value', 'Original Message']].copy()
+                    urls_display.rename(columns={'Exposed Value': 'Clickable Link', 'Date': 'Timestamp', 'User': 'Sender'}, inplace=True)
+                    urls_display['Clickable Link'] = urls_display['Clickable Link'].apply(
+                        lambda x: x if x.startswith(('http://', 'https://')) else f"https://{x}"
+                    )
+
+                    st.dataframe(
+                        urls_display,
+                        column_config={
+                            "Clickable Link": st.column_config.LinkColumn(
+                                "Clickable Link",
+                                help="Click to open the detected link in a new browser tab",
+                                display_text=r"https?://(?:www\.)?([^/]+).*"
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
                 st.divider()
 
                 # Export Fully Redacted Clean Chat
